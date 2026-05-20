@@ -92,11 +92,11 @@ function whisperClientSecretSession(languageHint, whisperDeployment, transcripti
 }
 
 
-function assistantClientSecretSession({ assistantDeployment, voice, systemPrompt }) {
+function assistantClientSecretSession({ assistantDeployment, voice, systemPrompt, whisperDeployment, languageHint, reasoningEffort }) {
   if (!assistantDeployment) {
     throw new Error("Assistant deployment is required.");
   }
-  return {
+  const session = {
     type: "realtime",
     model: assistantDeployment,
     instructions: systemPrompt || "You are a helpful voice assistant. Respond clearly and concisely.",
@@ -106,6 +106,16 @@ function assistantClientSecretSession({ assistantDeployment, voice, systemPrompt
       }
     }
   };
+  if (whisperDeployment) {
+    session.input_audio_transcription = { model: whisperDeployment };
+    if (languageHint) {
+      session.input_audio_transcription.language = languageHint;
+    }
+  }
+  if (reasoningEffort) {
+    session.reasoning = { effort: reasoningEffort };
+  }
+  return session;
 }
 
 
@@ -170,7 +180,10 @@ app.post("/api/session/client-secret", async (req, res) => {
       session = assistantClientSecretSession({
         assistantDeployment: (req.body.assistantDeployment || current.assistantDeployment || "").trim(),
         voice: (req.body.voice || "").trim(),
-        systemPrompt: (req.body.systemPrompt || "").trim()
+        systemPrompt: (req.body.systemPrompt || "").trim(),
+        whisperDeployment: (req.body.whisperDeployment || current.whisperDeployment || "").trim(),
+        languageHint: (req.body.languageHint || "").trim(),
+        reasoningEffort: (req.body.reasoningEffort || "").trim()
       });
     } else if (mode === "transcribe") {
       const whisperDeployment = (req.body.whisperDeployment || current.whisperDeployment || "").trim();

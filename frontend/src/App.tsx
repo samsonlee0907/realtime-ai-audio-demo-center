@@ -35,6 +35,13 @@ const TRANSCRIPTION_DELAY_OPTIONS: Array<[string, string]> = [
   ["high", "High"],
   ["xhigh", "Extra high"]
 ];
+const ASSISTANT_REASONING_OPTIONS: Array<[string, string]> = [
+  ["", "Default"],
+  ["minimal", "Minimal"],
+  ["low", "Low"],
+  ["medium", "Medium"],
+  ["high", "High"]
+];
 
 function httpBaseUrl() {
   return window.location.origin.replace(/\/$/, "");
@@ -132,6 +139,7 @@ export default function App() {
   const [targetLanguage, setTargetLanguage] = useState("en");
   const [languageHint, setLanguageHint] = useState("");
   const [transcriptionDelay, setTranscriptionDelay] = useState("");
+  const [assistantReasoningEffort, setAssistantReasoningEffort] = useState("");
   const [playSourceAudio, setPlaySourceAudio] = useState(false);
   const [mediaUrl, setMediaUrl] = useState("");
   const [mediaName, setMediaName] = useState("");
@@ -162,6 +170,8 @@ export default function App() {
   const muteNodeRef = useRef<GainNode | null>(null);
   const playbackTimeRef = useRef(0);
   const uploadObjectUrlRef = useRef<string | null>(null);
+  const assistantCommittedSourceRef = useRef("");
+  const assistantLiveSourceRef = useRef("");
   const assistantCommittedTargetRef = useRef("");
   const assistantLiveTargetRef = useRef("");
 
@@ -246,6 +256,8 @@ export default function App() {
   function resetOutputs() {
     setSourceText("");
     setTargetText("");
+    assistantCommittedSourceRef.current = "";
+    assistantLiveSourceRef.current = "";
     assistantCommittedTargetRef.current = "";
     assistantLiveTargetRef.current = "";
   }
@@ -254,6 +266,24 @@ export default function App() {
     setLogs("");
     setRawInspector("");
     resetOutputs();
+  }
+
+  function appendTranscriptBlock(current: string, next: string) {
+    const block = next.trim();
+    if (!block) {
+      return current;
+    }
+    return `${current}${current ? "\n\n" : ""}${block}`;
+  }
+
+  function setAssistantRenderedSource(committed: string, live: string, status = "") {
+    const committedBlocks = committed.trim();
+    const liveBlock = live.trim() || status.trim();
+    if (committedBlocks && liveBlock) {
+      setSourceText(`${committedBlocks}\n\n${liveBlock}`);
+      return;
+    }
+    setSourceText(committedBlocks || liveBlock);
   }
 
   function setAssistantRenderedTarget(committed: string, live: string) {
@@ -462,22 +492,46 @@ export default function App() {
   }
 
   function handleAssistantEvent(event: any) {
+    if (event.type === "input_audio_buffer.speech_started") {
+      setAssistantRenderedSource(assistantCommittedSourceRef.current, assistantLiveSourceRef.current, "Listening...");
+      return;
+    }
+    if (event.type === "input_audio_buffer.speech_stopped") {
+      setAssistantRenderedSource(assistantCommittedSourceRef.current, assistantLiveSourceRef.current, "Processing...");
+      return;
+    }
     if (event.type === "response.done") {
-      const finalText = assistantLiveTargetRef.current.trim();
+      const finalText = normalizeTranscriptText(assistantLiveTargetRef.current || "");
       if (finalText) {
-        assistantCommittedTargetRef.current = `${assistantCommittedTargetRef.current}${assistantCommittedTargetRef.current ? "\n\n" : ""}${finalText}`;
-        setTargetText(assistantCommittedTargetRef.current);
+        assistantCommittedTargetRef.current = appendTranscriptBlock(assistantCommittedTargetRef.current, finalText);
         assistantLiveTargetRef.current = "";
+        setAssistantRenderedTarget(assistantCommittedTargetRef.current, assistantLiveTargetRef.current);
+      }
+      return;
+    }
+    if (event.type === "conversation.item.input_audio_transcription.delta" || event.type === "conversation.item.audio_transcription.delta") {
+      const delta = normalizeTranscriptText(event.delta || "");
+      if (delta) {
+        inspectTextQuality(delta, "assistant source transcript delta");
+        assistantLiveSourceRef.current += delta;
+        setAssistantRenderedSource(assistantCommittedSourceRef.current, assistantLiveSourceRef.current);
       }
       return;
     }
     if (event.type === "conversation.item.input_audio_transcription.completed" || event.type === "conversation.item.audio_transcription.completed") {
-      const transcript = normalizeTranscriptText(event.transcript || event.item?.content?.[0]?.transcript || "");
+      const transcript = normalizeTranscriptText(event.transcript || event.item?.content?.[0]?.transcript || assistantLiveSourceRef.current || "");
       if (transcript) {
         inspectTextQuality(transcript, "assistant source transcript");
-        setSourceText((current) => `${current}${current ? "\n\n" : ""}${transcript}`);
+        assistantCommittedSourceRef.current = appendTranscriptBlock(assistantCommittedSourceRef.current, transcript);
       }
-      assistantLiveTargetRef.current = "";
+      assistantLiveSourceRef.current = "";
+      setAssistantRenderedSource(assistantCommittedSourceRef.current, assistantLiveSourceRef.current);
+      return;
+    }
+    if (event.type === "conversation.item.input_audio_transcription.failed" || event.type === "conversation.item.audio_transcription.failed") {
+      assistantLiveSourceRef.current = "";
+      setAssistantRenderedSource(assistantCommittedSourceRef.current, assistantLiveSourceRef.current);
+      appendLog(`assistant transcription failed: ${event.error?.message || "unknown error"}`);
       return;
     }
     if (event.type === "conversation.item.created" && event.item?.role === "user") {
@@ -501,11 +555,11 @@ export default function App() {
       return;
     }
     if (event.type === "response.output_text.done" || event.type === "response.output_audio_transcript.done") {
-      const finalText = assistantLiveTargetRef.current.trim();
+      const finalText = normalizeTranscriptText(event.text || event.transcript || assistantLiveTargetRef.current || "");
       if (finalText) {
-        assistantCommittedTargetRef.current = `${assistantCommittedTargetRef.current}${assistantCommittedTargetRef.current ? "\n\n" : ""}${finalText}`;
-        setTargetText(assistantCommittedTargetRef.current);
+        assistantCommittedTargetRef.current = appendTranscriptBlock(assistantCommittedTargetRef.current, finalText);
         assistantLiveTargetRef.current = "";
+        setAssistantRenderedTarget(assistantCommittedTargetRef.current, assistantLiveTargetRef.current);
       }
       return;
     }
@@ -570,7 +624,8 @@ export default function App() {
         }
       })
     );
-    setSourceText((current) => `${current}${current ? "\n\n" : ""}Text prompt: ${prompt}`);
+    assistantCommittedSourceRef.current = appendTranscriptBlock(assistantCommittedSourceRef.current, `Text prompt: ${prompt}`);
+    setAssistantRenderedSource(assistantCommittedSourceRef.current, assistantLiveSourceRef.current);
     setAssistantTextPrompt("");
     appendLog("assistant text prompt sent");
   }
@@ -651,7 +706,10 @@ export default function App() {
       apiKey,
       assistantDeployment,
       voice,
-      systemPrompt
+      systemPrompt,
+      whisperDeployment,
+      languageHint,
+      reasoningEffort: assistantReasoningEffort
     });
     appendLog("assistant client secret received");
     appendLog(`normalized endpoint: ${normalizedEndpoint}`);
@@ -703,6 +761,11 @@ export default function App() {
           transcription.language = languageHint.trim();
         }
         session.input_audio_transcription = transcription;
+      }
+      if (assistantReasoningEffort.trim()) {
+        session.reasoning = {
+          effort: assistantReasoningEffort.trim()
+        };
       }
       dataChannel.send(JSON.stringify({ type: "session.update", session }));
       appendLog("session.update sent");
@@ -881,6 +944,8 @@ export default function App() {
     muteNodeRef.current = null;
     captureAudioContextRef.current = null;
     inputStreamRef.current = null;
+    assistantCommittedSourceRef.current = "";
+    assistantLiveSourceRef.current = "";
     assistantCommittedTargetRef.current = "";
     assistantLiveTargetRef.current = "";
     setAssistantChannelOpen(false);
@@ -903,7 +968,7 @@ export default function App() {
     appendLog(`loaded upload: ${file.name}`);
   }
 
-  const sourceHeading = mode === "translate" ? "Source transcript" : mode === "assistant" ? "Conversation transcript" : "Live / latest transcript";
+  const sourceHeading = mode === "translate" ? "Source transcript" : mode === "assistant" ? "Model Response Status" : "Live / latest transcript";
   const targetHeading = mode === "assistant" ? "Assistant output" : mode === "translate" ? "Translated output" : "Completed transcript";
   const assistantPromptDisabled = mode !== "assistant" || !assistantChannelOpen;
 
@@ -1014,6 +1079,20 @@ export default function App() {
           </p>
         </div>
 
+        <div className="grid2">
+          <label>
+            Assistant reasoning
+            <select value={assistantReasoningEffort} onChange={(event) => setAssistantReasoningEffort(event.target.value)} disabled={mode !== "assistant"}>
+              {ASSISTANT_REASONING_OPTIONS.map(([value, label]) => (
+                <option key={value || "default"} value={value}>{value ? `${label} (${value})` : label}</option>
+              ))}
+            </select>
+          </label>
+          <p className="note">
+            Leave this on `Default` for `gpt-realtime-1.5`. Use it with `gpt-realtime-2` when you want more deliberate reasoning.
+          </p>
+        </div>
+
         <label>
           Instructions
           <textarea
@@ -1094,7 +1173,7 @@ export default function App() {
         <section className="grid">
           <article className="card">
             <h2>{sourceHeading}</h2>
-            <pre className="card-body">{sourceText || "No transcript yet."}</pre>
+            <pre className="card-body">{sourceText || (mode === "assistant" ? "No status yet." : "No transcript yet.")}</pre>
           </article>
           <article className="card">
             <h2>{targetHeading}</h2>
@@ -1138,6 +1217,7 @@ export default function App() {
               <div><span>Source</span><strong>{sourceType}</strong></div>
               <div><span>Current media</span><strong>{currentSourceLabel}</strong></div>
               {mode === "assistant" ? <div><span>Voice</span><strong>{voice}</strong></div> : null}
+              {mode === "assistant" ? <div><span>Reasoning</span><strong>{assistantReasoningEffort || "default"}</strong></div> : null}
               <div><span>Target language</span><strong>{mode === "translate" ? targetLanguage : "n/a"}</strong></div>
             </div>
           </article>

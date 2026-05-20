@@ -2,46 +2,77 @@
 
 ## Overview
 
-Realtime AI Audio Demo Center is a local testing portal for three Azure OpenAI realtime scenarios:
+Realtime AI Audio Demo Center is a local browser portal for testing three Azure OpenAI realtime audio scenarios:
 
-- normal audio-to-audio assistant interaction with `gpt-realtime-1.5` or `gpt-realtime-2`
-- continuous speech translation with `gpt-realtime-translate`
+- speech-to-speech assistant conversations with `gpt-realtime-1.5`, `gpt-realtime-2`, or another compatible realtime assistant deployment
+- continuous live translation with `gpt-realtime-translate`
 - live transcription with `gpt-realtime-whisper`
 
-The portal accepts two source types:
+The demo supports two source types:
 
-- microphone
-- uploaded audio or video
+- microphone capture
+- uploaded audio or video files
 
-The app separates source monitoring from model output, so you can mute the original source media locally while still streaming that media audio into the model session.
+The application is intentionally shaped to reduce the most common setup errors:
+
+- it keeps the Azure endpoint and API key as UI inputs instead of requiring a local `.env` for normal use
+- it normalizes Azure Foundry-style endpoint input to the Azure OpenAI-compatible host shape
+- it keeps assistant, translate, and transcribe on their correct realtime transport patterns
+- it shows both a readable event log and a raw event inspector for payload debugging
 
 ---
 
-## Prerequisites
+## What This Demo Tests
+
+| Mode | Primary model | Input | Output | Transport pattern |
+| --- | --- | --- | --- | --- |
+| Assistant | `gpt-realtime-1.5`, `gpt-realtime-2`, or compatible realtime assistant deployment | audio or optional typed follow-up prompts | audio plus transcript text | browser WebRTC with backend-issued client secret |
+| Translate | `gpt-realtime-translate` | streaming source audio | translated audio plus transcript deltas | backend WebSocket proxy to translation endpoint |
+| Transcribe | `gpt-realtime-whisper` | streaming source audio | live transcript deltas plus completed transcript segments | browser WebRTC with backend-issued transcription client secret |
+
+---
+
+## Before You Start
 
 ### Local software
 
 - Node.js 20 or later
 - npm
+- a modern Chromium-based browser or another browser with working WebRTC support
 
-### Azure requirements
+### Azure prerequisites
 
-- an Azure OpenAI resource or Foundry-backed Azure OpenAI endpoint
+You need all of the following:
+
+- an Azure OpenAI resource
 - a valid API key for that resource
-- deployed realtime model names for any modes you want to test:
-  - assistant: `gpt-realtime-1.5`, `gpt-realtime-2`, or another compatible realtime deployment name
-  - translation: `gpt-realtime-translate`
-  - transcription: `gpt-realtime-whisper`
+- the deployed model names for the modes you plan to test
 
-### Browser capabilities
+Recommended deployment names:
 
-- microphone permission for microphone mode
-- media playback support for uploaded or proxied media
-- WebRTC support for assistant and transcription modes
+- assistant deployment: `gpt-realtime-1.5`, `gpt-realtime-2`, or your own assistant deployment name
+- translate deployment: `gpt-realtime-translate`
+- whisper deployment: `gpt-realtime-whisper`
+
+Important:
+
+- enter the **deployment name**, not just the base model family name, if your Azure deployment uses a custom name
+- prefer the Azure OpenAI-compatible endpoint shape:
+  - `https://<resource>.openai.azure.com`
+- do not paste a Foundry project path such as:
+  - `https://<resource>.services.ai.azure.com/api/projects/<project>`
+
+The app does normalize `services.ai.azure.com` hostnames to `openai.azure.com`, but users should still enter the Azure OpenAI endpoint directly whenever possible.
+
+### Browser requirements
+
+- microphone permission for `Mic` mode
+- local media playback support for `Upload` mode
+- WebRTC support for `Assistant` and `Transcribe`
 
 ---
 
-## Run The Demo
+## Install And Run
 
 ### 1. Install backend dependencies
 
@@ -79,17 +110,11 @@ Default frontend URL:
 
 - `http://127.0.0.1:5173`
 
-### 5. Enter connection settings in the UI
+### 5. Open the portal and enter the runtime settings
 
-The demo does not require a `.env` file for normal use. Enter the following values directly in the page:
+The app does not require a `.env` file for normal use. Enter the connection values directly in the UI.
 
-- Azure endpoint
-- API key
-- assistant deployment
-- translate deployment
-- whisper deployment
-
-Optional backend environment variables can still be used to prefill deployment names:
+Optional backend environment variables can still prefill deployment names:
 
 - `AZURE_OPENAI_ASSISTANT_DEPLOYMENT`
 - `AZURE_OPENAI_TRANSLATE_DEPLOYMENT`
@@ -98,116 +123,524 @@ Optional backend environment variables can still be used to prefill deployment n
 
 ---
 
-## Use The Demo
+## First-Time Setup Checklist
 
-### Choose a mode
+Before clicking `Start`, confirm these items:
 
-- `Assistant` for audio-in, audio-out conversation
-- `Translate` for continuous speech translation
-- `Transcribe` for low-latency transcript generation
-
-### Choose a source
-
-- `Mic` captures live microphone audio
-- `Upload` plays a local audio or video file and routes that media audio into the model
-
-### Source monitoring toggle
-
-`Play source audio locally` controls whether you hear the original source media on your speakers.
-
-- enabled: you hear the source media locally
-- disabled: the source media stays muted locally, but the model still receives it
-
-This toggle does not mute model output audio.
+1. `Azure endpoint` is your Azure OpenAI resource URL, ideally `https://<resource>.openai.azure.com`
+2. `API key` belongs to the same Azure OpenAI resource as the deployments you plan to test
+3. `Assistant deployment`, `Translate deployment`, and `Whisper deployment` are deployment names that actually exist on that resource
+4. `Mode` matches the deployment you supplied
+5. for `Translate`, `Target language` is a simple language code such as `en`, not a region value such as `en-US`
+6. for `Transcribe`, `Language hint` is either `Auto detect` or a plain ISO-639-1 code such as `ja`, `ko`, or `zh`
 
 ---
 
-## Technical Architecture
+## UI Parameter Reference
 
-### Frontend
+This section explains every runtime field in the portal and when it matters.
 
-The frontend is a React + TypeScript single-page application that:
+### Connection parameters
 
-- collects media from microphone capture or a media element
-- converts source media into a `MediaStream`
-- routes audio into either a WebRTC session or a backend WebSocket proxy
-- renders transcripts, translated text, model output, and event logs
-- keeps the Azure endpoint and API key in the browser session only
+| Field | Required | Used by | What to enter | Notes |
+| --- | --- | --- | --- | --- |
+| `Azure endpoint` | Yes | all modes | Azure OpenAI resource endpoint | Prefer `https://<resource>.openai.azure.com` |
+| `API key` | Yes | all modes | Azure OpenAI API key | Must belong to the same resource as the deployments |
+| `Assistant deployment` | Assistant mode | assistant | assistant-capable realtime deployment name | Example: `gpt-realtime-1.5`, `gpt-realtime-2`, or a custom deployment name |
+| `Translate deployment` | Translate mode | translate | translation deployment name | Use the actual Azure deployment name |
+| `Whisper deployment` | Transcribe mode, optional helper for Assistant and Translate | transcribe, optional transcript support elsewhere | whisper realtime deployment name | Required for `Transcribe`; optional when you also want source transcript support in other modes |
 
-### Backend
+### Mode-specific parameters
 
-The backend is a small Node.js service that:
+| Field | Used by | What it does | Recommended starting value |
+| --- | --- | --- | --- |
+| `Voice` | Assistant | selects assistant output voice | `alloy` |
+| `Target language` | Translate | sets translated output language | `en` for English testing |
+| `Language hint` | Transcribe, optional Assistant transcript help, optional Translate source transcript help | improves transcription accuracy and latency when known | `Auto detect` first, then a specific code for difficult languages |
+| `Whisper live delay` | Transcribe | controls how early partial text is emitted versus transcript quality | `Default` first; try `minimal` only after basic flow works |
+| `Instructions` | Assistant | assistant system behavior | keep concise and task-specific |
+| `Assistant text prompt` | Assistant | optional typed follow-up prompt inside an already running assistant session | leave blank unless you want to supplement audio input |
+| `Play source audio locally` | all modes with media input | controls whether you hear the original source on your machine | off if you only want model output audio |
 
-- normalizes Azure endpoints to the Azure OpenAI-compatible host shape
-- creates short-lived client secrets for browser WebRTC sessions
-- proxies realtime translation WebSocket traffic
+### Source parameters
+
+| Source | What happens |
+| --- | --- |
+| `Mic` | the browser captures live microphone audio and streams it directly into the selected mode |
+| `Upload` | a local audio or video file is played in the page, converted to a `MediaStream`, and its audio is routed into the model |
 
 ---
 
-## Model-Specific Implementation
+## Supported Language Codes
 
-## Assistant mode
+This section focuses on the codes exposed by the demo UI so that users do not need to guess the acceptable values.
 
-### Purpose
+### Translate target language
 
-Assistant mode restores the standard speech-to-speech experience for realtime voice models such as `gpt-realtime-1.5` and `gpt-realtime-2`.
+The app currently exposes these target language codes for `Translate` mode:
 
-### Session pattern
+`af`, `ar`, `az`, `be`, `bg`, `bs`, `ca`, `cs`, `cy`, `da`, `de`, `el`, `en`, `es`, `et`, `fa`, `fi`, `fr`, `gl`, `he`, `hi`, `hr`, `hu`, `hy`, `id`, `is`, `it`, `iw`, `ja`, `kk`, `kn`, `ko`, `lt`, `lv`, `mi`, `mk`, `mr`, `ms`, `ne`, `nl`, `no`, `pl`, `pt`, `ro`, `ru`, `sk`, `sl`, `sr`, `sv`, `sw`, `ta`, `th`, `tl`, `tr`, `uk`, `ur`, `vi`, `zh`
 
-1. The frontend sends the endpoint, API key, assistant deployment, selected voice, and assistant instructions to the backend.
-2. The backend requests a short-lived client secret from Azure OpenAI.
-3. The browser creates a WebRTC peer connection and data channel.
-4. The source audio stream is attached as a local track.
-5. The browser posts the SDP offer to `/openai/v1/realtime/calls?webrtcfilter=on`.
-6. The returned remote audio track is played in the UI audio control.
-7. A `session.update` configures instructions, turn detection, selected voice, and optional input transcription.
+Practical guidance:
 
-### Notes
+- use simple language codes such as `en`, `ja`, `ko`, or `zh`
+- avoid region-tag values such as `en-US`, `en-GB`, or `zh-TW`
+- if you want English output, use `en`
 
-- assistant mode is intended for audio-in, audio-out interaction
-- if a whisper deployment is supplied, the session can also display input transcription events
-- remote assistant audio is separate from source media monitoring
+### Whisper language hint
 
-## Translate mode
+The `Language hint` dropdown uses the same language-code set as the UI locale list above, plus:
 
-### Purpose
+- empty value for `Auto detect`
 
-Translate mode uses `gpt-realtime-translate` for continuous low-latency translation from source audio to translated text and translated speech.
+Practical guidance:
 
-### Session pattern
+- leave it on `Auto detect` for mixed-language or uncertain input
+- set it explicitly for Japanese, Korean, Simplified Chinese, or Traditional Chinese testing
+- use plain ISO-639-1 style values such as `ja`, `ko`, `zh`, `en`, `fr`
 
-1. The frontend captures source audio from mic or media playback.
-2. The frontend opens a browser-to-backend WebSocket.
-3. The backend opens a server WebSocket to `/openai/v1/realtime/translations?model=<deployment>`.
-4. The frontend streams base64 PCM16 audio chunks to the backend proxy.
-5. The backend forwards those events to Azure OpenAI.
-6. The frontend renders transcript deltas and plays returned audio deltas.
+### Assistant voice options
 
-### Notes
+The demo currently exposes these assistant voice values:
 
-- target language is set through session audio output language
-- optional source transcript support is enabled by supplying a whisper deployment and language hint
-- this mode is intentionally proxied through the backend instead of using the browser-only client-secret flow
+- `alloy`
+- `ash`
+- `ballad`
+- `coral`
+- `echo`
+- `sage`
+- `shimmer`
+- `verse`
 
-## Transcribe mode
+### Whisper live delay options
 
-### Purpose
+The transcribe UI exposes these delay values:
 
-Transcribe mode uses `gpt-realtime-whisper` to generate low-latency transcript updates from a live audio stream.
+- `Default`
+- `minimal`
+- `low`
+- `medium`
+- `high`
+- `xhigh`
 
-### Session pattern
+Practical guidance:
 
-1. The frontend sends endpoint, API key, whisper deployment, and optional language hint to the backend.
-2. The backend creates a transcription client secret.
-3. The browser creates a WebRTC session to Azure OpenAI.
-4. The source audio stream is attached as a local track.
-5. The browser receives transcription events over the realtime data channel.
-6. The UI shows the latest segment in the left panel and accumulates completed transcript segments in the right panel.
+- `Default` is the safest first test
+- lower delay aims for earlier partial text
+- higher delay can improve transcript quality at the cost of slower live updates
+- if client secret creation fails after changing this field, return to `Default`
 
-### Notes
+---
 
-- transcription uses a transcription session rather than the general assistant conversation shape
-- language hint is optional but strongly recommended for Japanese, Korean, and Chinese tests
+## Recommended Getting Started Path
+
+Users should test the modes in this order to isolate setup issues quickly.
+
+### Step 1: Verify assistant mode first
+
+Use these starter values:
+
+- `Mode`: `Assistant`
+- `Source`: `Mic`
+- `Assistant deployment`: your assistant deployment
+- `Voice`: `alloy`
+- `Instructions`: a short instruction such as `Be concise and answer in English.`
+
+Expected result:
+
+- the event log shows client secret creation and WebRTC connection activity
+- the remote audio player receives assistant output
+- the top panels show transcript and assistant response text
+
+### Step 2: Verify transcribe mode
+
+Use these starter values:
+
+- `Mode`: `Transcribe`
+- `Source`: `Mic` or `Upload`
+- `Whisper deployment`: your whisper deployment
+- `Language hint`: `Auto detect` first
+- `Whisper live delay`: `Default`
+
+Expected result:
+
+- the left panel shows live or latest transcript text
+- the right panel accumulates completed transcript segments
+- the raw event inspector shows the realtime transcription events
+
+### Step 3: Verify translate mode
+
+Use these starter values:
+
+- `Mode`: `Translate`
+- `Source`: `Mic` or `Upload`
+- `Translate deployment`: your translate deployment
+- `Target language`: `en`
+- optional `Whisper deployment`: only if you also want source transcript support
+
+Expected result:
+
+- translated text appears in the right panel
+- translated audio plays back in the browser
+- if whisper support is enabled, source transcript text appears in the left panel
+
+---
+
+## Common Errors And How To Avoid Them
+
+### 1. `401 invalid subscription key or wrong API endpoint`
+
+Usually means one of these:
+
+- the endpoint is not the Azure OpenAI-compatible host
+- the API key belongs to a different resource
+- the deployment is not on the resource identified by the endpoint and key
+
+What to do:
+
+- use `https://<resource>.openai.azure.com`
+- verify the key from that exact resource
+- verify the deployment names on that same resource
+
+### 2. `400 InvalidSessionType`
+
+This usually appears when a mode is being routed to the wrong realtime path or when a payload shape does not match the session type.
+
+What to do:
+
+- use `Assistant` only for assistant-capable realtime deployments
+- use `Translate` only with `gpt-realtime-translate`
+- use `Transcribe` only with `gpt-realtime-whisper`
+- do not try to reuse one deployment value across all three modes
+
+### 3. `500 Internal server error` during transcribe client secret creation
+
+This can happen when Azure rejects a newer transcription session option.
+
+What to do:
+
+- leave `Whisper live delay` on `Default` first
+- confirm `Whisper deployment` is the correct deployment name
+- verify the endpoint and key pair again if the error persists
+
+### 4. Translate outputs the wrong language
+
+Common cause:
+
+- target language entered as a region code instead of a supported simple language code
+
+What to do:
+
+- use `en`, not `en-US`
+- use the dropdown rather than typing a value manually
+
+### 5. Transcript shows `�` replacement characters
+
+This usually means the payload was already malformed before rendering.
+
+What to try:
+
+- set `Language hint` explicitly
+- test cleaner audio with less background music or overlapping speech
+- compare `Mic` and `Upload`
+- inspect the raw event inspector to see whether the malformed character was already present in the incoming event
+
+### 6. No live transcript, only completed transcript
+
+What to check:
+
+- start with `Whisper live delay = Default`
+- inspect the raw event inspector for `conversation.item.input_audio_transcription.delta`
+- if no delta events arrive, the service may still be returning only completed chunks for that session or audio pattern
+
+---
+
+## Model Usage Reference
+
+This section focuses only on the two specialized models in this demo:
+
+- `gpt-realtime-translate`
+- `gpt-realtime-whisper`
+
+It explains the exact protocol family, endpoint shape, headers, and parameters needed to make requests successfully.
+
+### `gpt-realtime-translate`
+
+#### When to use it
+
+Use `gpt-realtime-translate` when the application should behave like an interpreter, not like a conversational assistant. Official OpenAI guidance treats translation as a dedicated realtime translation session on `/v1/realtime/translations`, separate from the standard voice-agent session on `/v1/realtime`. citeturn1view3turn0search10
+
+#### Protocol used in this demo
+
+This demo uses:
+
+- browser to local backend: WebSocket
+- local backend to Azure OpenAI: secure WebSocket
+
+That matches the continuous translation-session model where the client keeps streaming source audio and the service keeps returning translated audio and transcript deltas as the speaker continues. OpenAI’s translation event reference documents `session.update`, `session.input_audio_buffer.append`, and continuous output on the translation socket. citeturn1view1turn1view3
+
+#### Azure endpoint format
+
+The working Azure translation socket shape is:
+
+```text
+wss://<resource>.openai.azure.com/openai/v1/realtime/translations?model=<translate-deployment>
+```
+
+Rules:
+
+- use `wss://`
+- use the Azure OpenAI-compatible host `*.openai.azure.com`
+- use the Azure deployment name in `model=...`
+- do not append an `api-version` query when using the Azure v1 GA path
+
+Azure’s v1 API guidance says the v1 path removes the old monthly `api-version` requirement. Azure’s general realtime WebSocket docs describe the GA path under `openai/v1/realtime`, and OpenAI’s translation docs define translation as the dedicated `/v1/realtime/translations` path rather than the voice-agent path. citeturn1view6turn1view5turn1view3
+
+#### Required header
+
+The backend-to-Azure translation socket uses:
+
+```text
+api-key: <azure-openai-api-key>
+```
+
+The Azure key stays server-side in this implementation.
+
+#### Required runtime parameters
+
+| Parameter | Required | Example | Purpose |
+| --- | --- | --- | --- |
+| `endpoint` | Yes | `https://my-resource.openai.azure.com` | Azure OpenAI resource endpoint |
+| `apiKey` | Yes | `...` | Azure API key for that resource |
+| `translateDeployment` | Yes | `gpt-realtime-translate` | Azure deployment name for translation |
+| `targetLanguage` | Yes | `en` | target output language |
+| `whisperDeployment` | No | `gpt-realtime-whisper` | optional model for source transcript deltas |
+| `sourceLanguage` | No | `ja` | optional hint for the source transcript model |
+
+#### First frame sent by the browser to the local backend
+
+```json
+{
+  "type": "proxy.configure",
+  "endpoint": "https://<resource>.openai.azure.com",
+  "apiKey": "<api-key>",
+  "translateDeployment": "<translate-deployment>",
+  "targetLanguage": "en",
+  "whisperDeployment": "<optional-whisper-deployment>",
+  "sourceLanguage": "<optional-language-hint>"
+}
+```
+
+#### First frame sent by the backend to Azure
+
+```json
+{
+  "type": "session.update",
+  "session": {
+    "audio": {
+      "input": {
+        "noise_reduction": {
+          "type": "near_field"
+        },
+        "transcription": {
+          "model": "<optional-whisper-deployment>",
+          "language": "<optional-language-hint>"
+        }
+      },
+      "output": {
+        "language": "en"
+      }
+    }
+  }
+}
+```
+
+For translation sessions, the supported `session.update` fields are `audio.output.language`, `audio.input.transcription`, and `audio.input.noise_reduction`. OpenAI’s translation client-event reference documents exactly those update fields. citeturn1view1
+
+#### Audio frames sent after configuration
+
+```json
+{
+  "type": "session.input_audio_buffer.append",
+  "audio": "<base64-encoded-24khz-pcm16-mono>"
+}
+```
+
+The official translation event reference specifies base64 24 kHz PCM16 mono audio for WebSocket translation sessions and recommends appending audio in roughly 200 ms chunks. citeturn1view1
+
+#### Common success events
+
+Typical translation outputs include:
+
+- `session.input_transcript.delta`
+- `conversation.item.input_audio_transcription.delta`
+- `session.output_transcript.delta`
+- `response.output_audio.delta`
+- `response.output_audio_transcript.delta`
+
+#### Common translation mistakes
+
+- using `/openai/v1/realtime` instead of `/openai/v1/realtime/translations`
+- using the base model family name instead of the Azure deployment name
+- sending `en-US` instead of `en`
+- putting the Azure key directly in a browser translation socket
+- pasting a Foundry project URL instead of the Azure OpenAI resource endpoint
+
+### `gpt-realtime-whisper`
+
+#### When to use it
+
+Use `gpt-realtime-whisper` when you want streaming speech-to-text without assistant speech output. OpenAI’s transcription docs describe it as the low-latency streaming path for transcript deltas, and Microsoft’s GPT Realtime Whisper overview describes it as a streaming transcription model for live audio. citeturn1view2turn0search3
+
+#### Protocol used in this demo
+
+This demo uses:
+
+- backend to Azure for ephemeral session creation: HTTPS
+- browser to Azure for the live session: WebRTC
+
+That fits the browser transcription pattern: a protected backend creates a short-lived client secret, then the browser uses that secret to establish the live WebRTC session. OpenAI’s transcription docs say transcription sessions can use WebSocket for server-side audio pipelines or WebRTC for browser audio. Azure’s WebRTC docs say WebRTC is the preferred client-side transport for realtime audio streaming. citeturn1view2turn1view4
+
+#### Azure endpoint format
+
+There are two Azure request shapes involved.
+
+##### 1. Client secret creation
+
+```text
+POST https://<resource>.openai.azure.com/openai/v1/realtime/client_secrets
+```
+
+Headers:
+
+```text
+api-key: <azure-openai-api-key>
+Content-Type: application/json
+```
+
+##### 2. WebRTC SDP exchange
+
+```text
+POST https://<resource>.openai.azure.com/openai/v1/realtime/calls?webrtcfilter=on
+```
+
+Headers:
+
+```text
+Authorization: Bearer <client-secret>
+Content-Type: application/sdp
+```
+
+Azure’s GA WebRTC docs call out `/openai/v1/realtime/client_secrets` and `/openai/v1/realtime/calls` for browser WebRTC sessions, and the Azure v1 API docs explain that the v1 path avoids the older `api-version` query requirement. citeturn1view4turn1view6
+
+#### Required runtime parameters
+
+| Parameter | Required | Example | Purpose |
+| --- | --- | --- | --- |
+| `endpoint` | Yes | `https://my-resource.openai.azure.com` | Azure OpenAI resource endpoint |
+| `apiKey` | Yes | `...` | Azure API key for that resource |
+| `whisperDeployment` | Yes | `gpt-realtime-whisper` | Azure transcription deployment name |
+| `languageHint` | No | `ja` | optional input language hint |
+| `transcriptionDelay` | No | `low` | optional latency-versus-quality control for partial text |
+
+#### Body sent by the app to its backend
+
+```json
+{
+  "mode": "transcribe",
+  "endpoint": "https://<resource>.openai.azure.com",
+  "apiKey": "<api-key>",
+  "whisperDeployment": "<whisper-deployment>",
+  "languageHint": "ja",
+  "transcriptionDelay": "low"
+}
+```
+
+#### Body sent by the backend to Azure client secrets
+
+```json
+{
+  "session": {
+    "type": "transcription",
+    "audio": {
+      "input": {
+        "format": {
+          "type": "audio/pcm",
+          "rate": 24000
+        },
+        "transcription": {
+          "model": "<whisper-deployment>",
+          "language": "ja",
+          "delay": "low"
+        },
+        "turn_detection": {
+          "type": "server_vad",
+          "threshold": 0.5,
+          "prefix_padding_ms": 300,
+          "silence_duration_ms": 500
+        }
+      }
+    }
+  }
+}
+```
+
+OpenAI’s realtime transcription docs show transcription sessions with `type: "transcription"`, `audio.input.format`, `audio.input.transcription.model`, `audio.input.transcription.language`, and optional `turn_detection`. The transcription-session reference also documents `delay` for `gpt-realtime-whisper`, where lower delay yields earlier partial text and higher delay can improve quality. citeturn1view2turn1view0
+
+#### Common success events
+
+Typical Whisper events include:
+
+- `input_audio_buffer.speech_started`
+- `input_audio_buffer.speech_stopped`
+- `conversation.item.input_audio_transcription.delta`
+- `conversation.item.input_audio_transcription.completed`
+- `conversation.item.input_audio_transcription.failed`
+
+#### Common transcription mistakes
+
+- sending an assistant `realtime` session instead of a `transcription` session
+- using a non-whisper deployment in the transcription model field
+- using a Foundry project URL instead of the Azure OpenAI resource endpoint
+- sending `ja-JP` instead of `ja`
+- forcing a non-default `delay` value before basic connectivity works
+- assuming completed transcript events mean streaming is unsupported; the raw inspector should be checked for delta events first
+
+---
+
+## Technical Notes By Mode
+
+### Assistant
+
+Assistant mode uses a standard realtime voice session:
+
+1. backend creates a client secret
+2. browser opens WebRTC
+3. browser posts the SDP offer to the Azure OpenAI realtime calls endpoint
+4. browser sends `session.update` with assistant instructions, voice, and optional input transcription
+5. audio output returns on the remote track
+
+### Translate
+
+Translate mode uses a dedicated translation session through a backend proxy:
+
+1. browser captures source audio
+2. browser opens a local WebSocket to the backend
+3. backend opens Azure translation WebSocket
+4. browser sends base64 PCM16 audio chunks
+5. backend forwards them to Azure
+6. translated transcript and audio deltas are returned to the browser
+
+### Transcribe
+
+Transcribe mode uses a transcription session rather than an assistant conversation session:
+
+1. backend creates a transcription client secret
+2. browser opens WebRTC
+3. source audio is attached as the local track
+4. transcription events arrive over the realtime data channel
+5. live text is shown in the left panel
+6. completed segments accumulate in the right panel
 
 ---
 
@@ -217,44 +650,27 @@ Transcribe mode uses `gpt-realtime-whisper` to generate low-latency transcript u
 
 The app tries to preserve text correctly by:
 
-- treating all realtime events as UTF-8 text events
-- rendering transcript text directly without manual re-encoding
-- normalizing displayed transcript strings to Unicode NFC
-- using multilingual UI font fallbacks for Simplified Chinese, Traditional Chinese, Japanese, and Korean
-- logging when replacement characters (`�`) already exist in the upstream payload
+- treating realtime events as text payloads
+- rendering transcript strings directly without manual character-set conversion
+- normalizing displayed strings to Unicode NFC
+- using multilingual font fallbacks for Simplified Chinese, Traditional Chinese, Japanese, and Korean
+- logging when replacement characters (`�`) are already present in the upstream payload
 
-### What the app cannot fix
+### What the app may not work well on
 
-If the event payload already contains replacement characters, the text was malformed before rendering. This is usually not a local font-pack issue.
+If the incoming event already contains replacement characters, the browser UI cannot reconstruct the lost original text.
 
-Common causes:
+Typical causes:
 
-- incorrect upstream transcript generation for that audio segment
-- language mismatch or weak language detection
-- noisy source audio
-- mixed-language content or subtitle-heavy media that reduces transcription quality
+- noisy or low-quality source audio
+- incorrect language detection
+- mixed-language speech in a short segment
+- background music contaminating the input
+- upstream model output already malformed before the UI receives it
 
-### Recommended mitigations
+### Best practices for multilingual testing
 
-- set `Language hint` explicitly for Japanese, Korean, Simplified Chinese, or Traditional Chinese tests
-- test cleaner audio sources with less background music
-- prefer uploaded media over browser-tab capture when you want more stable input
-- compare the same media through assistant, translate, and transcribe modes to isolate whether corruption is specific to one model path
-
----
-
-## Project Layout
-
-```text
-backend/
-  package.json
-  server.mjs
-frontend/
-  package.json
-  tsconfig.json
-  vite.config.ts
-  src/
-    App.tsx
-    main.tsx
-    styles.css
-```
+- set `Language hint` explicitly for `ja`, `ko`, or `zh` when the source language is known
+- prefer clean uploaded files when validating text quality
+- keep the source audio as dry and speech-focused as possible
+- use the raw event inspector to distinguish rendering issues from upstream payload issues

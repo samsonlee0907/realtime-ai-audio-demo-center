@@ -54,6 +54,12 @@ Recommended deployment names:
 - translate deployment: `gpt-realtime-translate`
 - whisper deployment: `gpt-realtime-whisper`
 
+Important notes for `gpt-realtime-2`:
+
+- `gpt-realtime-2` is currently documented by Microsoft as a public preview model
+- Microsoft states that preview features have no SLA and are not recommended for production workloads
+- the connection and usage pattern is the same as earlier realtime assistant models, so existing WebRTC, WebSocket, or SIP integration patterns still apply
+
 Important:
 
 - enter the **deployment name**, not just the base model family name, if your Azure deployment uses a custom name
@@ -161,6 +167,11 @@ This section explains every runtime field in the portal and when it matters.
 | `Instructions` | Assistant | assistant system behavior | keep concise and task-specific |
 | `Assistant text prompt` | Assistant | optional typed follow-up prompt inside an already running assistant session | leave blank unless you want to supplement audio input |
 | `Play source audio locally` | all modes with media input | controls whether you hear the original source on your machine | off if you only want model output audio |
+
+Additional note for `gpt-realtime-2`:
+
+- Microsoft documents built-in reasoning for `gpt-realtime-2`, including a `reasoning.effort` control with `minimal`, `low`, `medium`, and `high`
+- this demo currently uses `gpt-realtime-2` through the same assistant transport path as other realtime assistant models and does not expose a separate `reasoning.effort` UI control yet
 
 ### Source parameters
 
@@ -357,12 +368,182 @@ What to check:
 
 ## Model Usage Reference
 
-This section focuses only on the two specialized models in this demo:
+This section focuses on the three model paths documented explicitly in this demo:
 
+- `gpt-realtime-2`
 - `gpt-realtime-translate`
 - `gpt-realtime-whisper`
 
 It explains the exact protocol family, endpoint shape, headers, and parameters needed to make requests successfully.
+
+### `gpt-realtime-2`
+
+#### When to use it
+
+Use `gpt-realtime-2` when you want a speech-to-speech assistant rather than a pure translator or pure transcription stream. Microsoft’s current concept page describes GPT Realtime 2 as a speech-to-speech model with built-in reasoning for low-latency interactive voice experiences, and it says the connection and usage patterns are the same as earlier realtime versions. citeturn1search0
+
+#### Protocol used in this demo
+
+This demo uses:
+
+- backend to Azure for client secret creation: HTTPS
+- browser to Azure for the live session: WebRTC
+
+That is the same assistant-style realtime pattern used by earlier browser voice sessions: the backend creates a short-lived client secret, then the browser creates a WebRTC session and exchanges SDP with Azure. Azure’s GA WebRTC docs call this the preferred transport for client-side realtime audio streaming. citeturn1view4
+
+#### Azure endpoint format
+
+There are two Azure request shapes involved.
+
+##### 1. Client secret creation
+
+```text
+POST https://<resource>.openai.azure.com/openai/v1/realtime/client_secrets
+```
+
+Headers:
+
+```text
+api-key: <azure-openai-api-key>
+Content-Type: application/json
+```
+
+##### 2. WebRTC SDP exchange
+
+```text
+POST https://<resource>.openai.azure.com/openai/v1/realtime/calls?webrtcfilter=on
+```
+
+Headers:
+
+```text
+Authorization: Bearer <client-secret>
+Content-Type: application/sdp
+```
+
+Azure’s GA WebRTC docs identify `/openai/v1/realtime/client_secrets` and `/openai/v1/realtime/calls` as the browser WebRTC endpoints, and Azure’s v1 API guidance says the v1 path removes the old dated `api-version` parameter requirement. citeturn1view4turn1view6
+
+#### Required runtime parameters
+
+| Parameter | Required | Example | Purpose |
+| --- | --- | --- | --- |
+| `endpoint` | Yes | `https://my-resource.openai.azure.com` | Azure OpenAI resource endpoint |
+| `apiKey` | Yes | `...` | Azure API key for that resource |
+| `assistantDeployment` | Yes | `gpt-realtime-2` | Azure deployment name for the assistant model |
+| `voice` | No | `alloy` | output voice used for assistant speech |
+| `systemPrompt` | No | `You are a concise voice assistant.` | assistant behavior instructions |
+| `whisperDeployment` | No | `gpt-realtime-whisper` | optional helper model for input transcription events |
+| `languageHint` | No | `en` | optional hint for the helper transcription model |
+
+#### Body sent by the app to its backend
+
+```json
+{
+  "mode": "assistant",
+  "endpoint": "https://<resource>.openai.azure.com",
+  "apiKey": "<api-key>",
+  "assistantDeployment": "gpt-realtime-2",
+  "voice": "alloy",
+  "systemPrompt": "You are a concise voice assistant."
+}
+```
+
+#### Body sent by the backend to Azure client secrets
+
+```json
+{
+  "session": {
+    "type": "realtime",
+    "model": "gpt-realtime-2",
+    "instructions": "You are a concise voice assistant.",
+    "audio": {
+      "output": {
+        "voice": "alloy"
+      }
+    }
+  }
+}
+```
+
+#### Session update sent by the browser after the data channel opens
+
+```json
+{
+  "type": "session.update",
+  "session": {
+    "type": "realtime",
+    "instructions": "You are a concise voice assistant.",
+    "turn_detection": {
+      "type": "server_vad",
+      "threshold": 0.5,
+      "prefix_padding_ms": 300,
+      "silence_duration_ms": 200,
+      "create_response": true
+    },
+    "audio": {
+      "output": {
+        "voice": "alloy"
+      }
+    },
+    "input_audio_transcription": {
+      "model": "<optional-whisper-deployment>",
+      "language": "<optional-language-hint>"
+    }
+  }
+}
+```
+
+This demo does not currently send a `reasoning.effort` field, but Microsoft’s GPT Realtime 2 concept page documents `reasoning.effort` with valid values `minimal`, `low`, `medium`, and `high`. The same concept page also notes stricter instruction following and separate response phases such as commentary and final answer. citeturn1search0
+
+#### Optional text prompt during a running session
+
+Once the assistant data channel is open, the app can also send a typed prompt:
+
+```json
+{
+  "type": "conversation.item.create",
+  "item": {
+    "type": "message",
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "Summarize what you just heard."
+      }
+    ]
+  }
+}
+```
+
+followed by:
+
+```json
+{
+  "type": "response.create",
+  "response": {
+    "modalities": ["text", "audio"]
+  }
+}
+```
+
+#### Common success events
+
+Typical assistant events include:
+
+- `conversation.item.input_audio_transcription.completed`
+- `response.output_text.delta`
+- `response.output_audio_transcript.delta`
+- `response.output_text.done`
+- `response.output_audio_transcript.done`
+- `response.done`
+
+#### Common `gpt-realtime-2` mistakes
+
+- using a translation or transcription endpoint instead of the standard realtime assistant path
+- using a deployment that is not actually based on `gpt-realtime-2`
+- assuming the protocol changed from earlier realtime assistant models when only the model behavior changed
+- over-constraining the prompt; Microsoft notes stricter instruction following in GPT Realtime 2, so prompts sometimes need broader wording than earlier realtime models
+- expecting a `reasoning.effort` control in this demo UI even though the current app does not expose that parameter yet
 
 ### `gpt-realtime-translate`
 
@@ -619,6 +800,8 @@ Assistant mode uses a standard realtime voice session:
 3. browser posts the SDP offer to the Azure OpenAI realtime calls endpoint
 4. browser sends `session.update` with assistant instructions, voice, and optional input transcription
 5. audio output returns on the remote track
+
+If you point Assistant mode at `gpt-realtime-2`, the transport does not change. Microsoft’s current concept page says GPT Realtime 2 uses the same connection and usage patterns as earlier realtime versions, but adds built-in reasoning, stricter instruction following, response phases such as commentary and final answer, and a larger 256,000-token context window. This means the safest update for existing apps is usually to keep the protocol the same and revisit prompt wording and reasoning controls separately. 
 
 ### Translate
 

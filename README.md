@@ -26,7 +26,7 @@ The application is intentionally shaped to reduce the most common setup errors:
 
 | Mode | Primary model | Input | Output | Transport pattern |
 | --- | --- | --- | --- | --- |
-| Assistant | `gpt-realtime-1.5`, `gpt-realtime-2`, or compatible realtime assistant deployment | audio or optional typed follow-up prompts | audio plus transcript text | browser WebRTC with backend-issued client secret |
+| Assistant | `gpt-realtime-1.5`, `gpt-realtime-2`, or compatible realtime assistant deployment | audio or optional typed follow-up prompts | audio plus status and optional transcript text | browser WebRTC with backend-issued client secret |
 | Translate | `gpt-realtime-translate` | streaming source audio | translated audio plus transcript deltas | backend WebSocket proxy to translation endpoint |
 | Transcribe | `gpt-realtime-whisper` | streaming source audio | live transcript deltas plus completed transcript segments | browser WebRTC with backend-issued transcription client secret |
 
@@ -172,7 +172,8 @@ This section explains every runtime field in the portal and when it matters.
 Additional note for `gpt-realtime-2`:
 
 - Microsoft documents built-in reasoning for `gpt-realtime-2`, including a `reasoning.effort` control with `minimal`, `low`, `medium`, and `high`
-- this demo currently uses `gpt-realtime-2` through the same assistant transport path as other realtime assistant models and does not expose a separate `reasoning.effort` UI control yet
+- `reasoning.effort` is optional, not required; leaving `Assistant reasoning` on `Default` omits the field
+- this demo uses `gpt-realtime-2` through the same assistant transport path as other realtime assistant models and exposes `Assistant reasoning` only as an optional tuning control
 
 ### Source parameters
 
@@ -276,7 +277,7 @@ Use these starter values:
 
 Expected result:
 
-- the left panel shows live or latest transcript text
+- the left panel shows listening and processing status, plus any assistant-side transcription text if Azure emits it
 - the right panel accumulates completed transcript segments
 - the raw event inspector shows the realtime transcription events
 
@@ -294,7 +295,7 @@ Expected result:
 
 - translated text appears in the right panel
 - translated audio plays back in the browser
-- if whisper support is enabled, source transcript text appears in the left panel
+- if whisper support is enabled, source transcript text can appear in the left panel, but those events are asynchronous and may be delayed
 
 ---
 
@@ -435,6 +436,7 @@ Azure’s GA WebRTC docs identify `/openai/v1/realtime/client_secrets` and `/ope
 | `systemPrompt` | No | `You are a concise voice assistant.` | assistant behavior instructions |
 | `whisperDeployment` | No | `gpt-realtime-whisper` | optional helper model for input transcription events |
 | `languageHint` | No | `en` | optional hint for the helper transcription model |
+| `reasoningEffort` | No | `low` | optional `gpt-realtime-2` reasoning control; omit it to use the model default |
 
 #### Body sent by the app to its backend
 
@@ -445,9 +447,12 @@ Azure’s GA WebRTC docs identify `/openai/v1/realtime/client_secrets` and `/ope
   "apiKey": "<api-key>",
   "assistantDeployment": "gpt-realtime-2",
   "voice": "alloy",
-  "systemPrompt": "You are a concise voice assistant."
+  "systemPrompt": "You are a concise voice assistant.",
+  "reasoningEffort": "low"
 }
 ```
+
+If `Assistant reasoning` stays on `Default`, the app omits `reasoningEffort` entirely.
 
 #### Body sent by the backend to Azure client secrets
 
@@ -457,6 +462,9 @@ Azure’s GA WebRTC docs identify `/openai/v1/realtime/client_secrets` and `/ope
     "type": "realtime",
     "model": "gpt-realtime-2",
     "instructions": "You are a concise voice assistant.",
+    "reasoning": {
+      "effort": "low"
+    },
     "audio": {
       "output": {
         "voice": "alloy"
@@ -486,6 +494,9 @@ Azure’s GA WebRTC docs identify `/openai/v1/realtime/client_secrets` and `/ope
         "voice": "alloy"
       }
     },
+    "reasoning": {
+      "effort": "low"
+    },
     "input_audio_transcription": {
       "model": "<optional-whisper-deployment>",
       "language": "<optional-language-hint>"
@@ -494,7 +505,9 @@ Azure’s GA WebRTC docs identify `/openai/v1/realtime/client_secrets` and `/ope
 }
 ```
 
-This demo does not currently send a `reasoning.effort` field, but Microsoft’s GPT Realtime 2 concept page documents `reasoning.effort` with valid values `minimal`, `low`, `medium`, and `high`. The same concept page also notes stricter instruction following and separate response phases such as commentary and final answer. citeturn1search0
+`reasoning.effort` is optional. This demo sends it only when you choose a non-default `Assistant reasoning` value. Microsoft’s GPT Realtime 2 concept page documents valid values `minimal`, `low`, `medium`, and `high`. The same concept page also notes stricter instruction following and separate response phases such as commentary and final answer. citeturn1search0
+
+Assistant-side input transcription is optional and asynchronous. OpenAI’s realtime reference says input audio transcription is not native to the speech model and should be treated as rough guidance rather than the exact representation understood by the model. Microsoft’s GPT Realtime Whisper overview says Whisper can run alongside speech-to-speech models to provide continuous input transcription for audio streams. In practice, that means a working `gpt-realtime-1.5` or `gpt-realtime-2` assistant session can still show only listening and processing states if transcription events are delayed or sparse. citeturn3search1turn3search2
 
 #### Optional text prompt during a running session
 
@@ -544,7 +557,7 @@ Typical assistant events include:
 - using a deployment that is not actually based on `gpt-realtime-2`
 - assuming the protocol changed from earlier realtime assistant models when only the model behavior changed
 - over-constraining the prompt; Microsoft notes stricter instruction following in GPT Realtime 2, so prompts sometimes need broader wording than earlier realtime models
-- expecting a `reasoning.effort` control in this demo UI even though the current app does not expose that parameter yet
+- treating `reasoning.effort` as mandatory; it is optional and can be omitted by leaving `Assistant reasoning` on `Default`
 
 ### `gpt-realtime-translate`
 
@@ -823,7 +836,7 @@ Transcribe mode uses a transcription session rather than an assistant conversati
 2. browser opens WebRTC
 3. source audio is attached as the local track
 4. transcription events arrive over the realtime data channel
-5. live text is shown in the left panel
+5. status and any available assistant-side transcription text are shown in the left panel
 6. completed segments accumulate in the right panel
 
 ---

@@ -161,6 +161,7 @@ This section explains every runtime field in the portal and when it matters.
 | Field | Used by | What it does | Recommended starting value |
 | --- | --- | --- | --- |
 | `Voice` | Assistant | selects assistant output voice | `alloy` |
+| `Assistant reasoning` | Assistant | optional `reasoning.effort` control for `gpt-realtime-2` | `Default` for `gpt-realtime-1.5`; try `minimal` or `low` for `gpt-realtime-2` |
 | `Target language` | Translate | sets translated output language | `en` for English testing |
 | `Language hint` | Transcribe, optional Assistant transcript help, optional Translate source transcript help | improves transcription accuracy and latency when known | `Auto detect` first, then a specific code for difficult languages |
 | `Whisper live delay` | Transcribe | controls how early partial text is emitted versus transcript quality | `Default` first; try `minimal` only after basic flow works |

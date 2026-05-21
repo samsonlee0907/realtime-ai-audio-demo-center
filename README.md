@@ -382,7 +382,7 @@ It explains the exact protocol family, endpoint shape, headers, and parameters n
 
 #### When to use it
 
-Use `gpt-realtime-2` when you want a speech-to-speech assistant rather than a pure translator or pure transcription stream. Microsoft’s current concept page describes GPT Realtime 2 as a speech-to-speech model with built-in reasoning for low-latency interactive voice experiences, and it says the connection and usage patterns are the same as earlier realtime versions. citeturn1search0
+Use `gpt-realtime-2` when you want a speech-to-speech assistant rather than a pure translator or pure transcription stream. Microsoft’s current concept page describes GPT Realtime 2 as a speech-to-speech model with built-in reasoning for low-latency interactive voice experiences, and it says the connection and usage patterns are the same as earlier realtime versions.
 
 #### Protocol used in this demo
 
@@ -505,9 +505,9 @@ If `Assistant reasoning` stays on `Default`, the app omits `reasoningEffort` ent
 }
 ```
 
-`reasoning.effort` is optional. This demo sends it only when you choose a non-default `Assistant reasoning` value. Microsoft’s GPT Realtime 2 concept page documents valid values `minimal`, `low`, `medium`, and `high`. The same concept page also notes stricter instruction following and separate response phases such as commentary and final answer. citeturn1search0
+`reasoning.effort` is optional. This demo sends it only when you choose a non-default `Assistant reasoning` value. Microsoft’s GPT Realtime 2 concept page documents valid values `minimal`, `low`, `medium`, and `high`. The same concept page also notes stricter instruction following and separate response phases such as commentary and final answer.
 
-Assistant-side input transcription is optional and asynchronous. OpenAI’s realtime reference says input audio transcription is not native to the speech model and should be treated as rough guidance rather than the exact representation understood by the model. Microsoft’s GPT Realtime Whisper overview says Whisper can run alongside speech-to-speech models to provide continuous input transcription for audio streams. In practice, that means a working `gpt-realtime-1.5` or `gpt-realtime-2` assistant session can still show only listening and processing states if transcription events are delayed or sparse. citeturn3search1turn3search2
+Assistant-side input transcription is optional and asynchronous. OpenAI’s realtime reference says input audio transcription is not native to the speech model and should be treated as rough guidance rather than the exact representation understood by the model. Microsoft’s GPT Realtime Whisper overview says Whisper can run alongside speech-to-speech models to provide continuous input transcription for audio streams. In practice, that means a working `gpt-realtime-1.5` or `gpt-realtime-2` assistant session can still show only listening and processing states if transcription events are delayed or sparse.
 
 #### Optional text prompt during a running session
 
@@ -563,7 +563,7 @@ Typical assistant events include:
 
 #### When to use it
 
-Use `gpt-realtime-translate` when the application should behave like an interpreter, not like a conversational assistant. Official OpenAI guidance treats translation as a dedicated realtime translation session on `/v1/realtime/translations`, separate from the standard voice-agent session on `/v1/realtime`. citeturn1view3turn0search10
+Use `gpt-realtime-translate` when the application should behave like an interpreter, not like a conversational assistant. Official OpenAI guidance treats translation as a dedicated realtime translation session on `/v1/realtime/translations`, separate from the standard voice-agent session on `/v1/realtime`.
 
 #### Protocol used in this demo
 
@@ -572,7 +572,7 @@ This demo uses:
 - browser to local backend: WebSocket
 - local backend to Azure OpenAI: secure WebSocket
 
-That matches the continuous translation-session model where the client keeps streaming source audio and the service keeps returning translated audio and transcript deltas as the speaker continues. OpenAI’s translation event reference documents `session.update`, `session.input_audio_buffer.append`, and continuous output on the translation socket. citeturn1view1turn1view3
+That matches the continuous translation-session model where the client keeps streaming source audio and the service keeps returning translated audio and transcript deltas as the speaker continues. OpenAI’s translation event reference documents `session.update`, `session.input_audio_buffer.append`, and continuous output on the translation socket.
 
 #### Azure endpoint format
 
@@ -589,7 +589,7 @@ Rules:
 - use the Azure deployment name in `model=...`
 - do not append an `api-version` query when using the Azure v1 GA path
 
-Azure’s v1 API guidance says the v1 path removes the old monthly `api-version` requirement. Azure’s general realtime WebSocket docs describe the GA path under `openai/v1/realtime`, and OpenAI’s translation docs define translation as the dedicated `/v1/realtime/translations` path rather than the voice-agent path. citeturn1view6turn1view5turn1view3
+Azure’s v1 API guidance says the v1 path removes the old monthly `api-version` requirement. Azure’s general realtime WebSocket docs describe the GA path under `openai/v1/realtime`, and OpenAI’s translation docs define translation as the dedicated `/v1/realtime/translations` path rather than the voice-agent path.
 
 #### Required header
 
@@ -650,7 +650,7 @@ The Azure key stays server-side in this implementation.
 }
 ```
 
-For translation sessions, the supported `session.update` fields are `audio.output.language`, `audio.input.transcription`, and `audio.input.noise_reduction`. OpenAI’s translation client-event reference documents exactly those update fields. citeturn1view1
+For translation sessions, the supported `session.update` fields are `audio.output.language`, `audio.input.transcription`, and `audio.input.noise_reduction`. OpenAI’s translation client-event reference documents exactly those update fields.
 
 #### Audio frames sent after configuration
 
@@ -661,7 +661,7 @@ For translation sessions, the supported `session.update` fields are `audio.outpu
 }
 ```
 
-The official translation event reference specifies base64 24 kHz PCM16 mono audio for WebSocket translation sessions and recommends appending audio in roughly 200 ms chunks. citeturn1view1
+The official translation event reference specifies base64 24 kHz PCM16 mono audio for WebSocket translation sessions and recommends appending audio in roughly 200 ms chunks.
 
 #### Common success events
 
@@ -685,7 +685,7 @@ Typical translation outputs include:
 
 #### When to use it
 
-Use `gpt-realtime-whisper` when you want streaming speech-to-text without assistant speech output. OpenAI’s transcription docs describe it as the low-latency streaming path for transcript deltas, and Microsoft’s GPT Realtime Whisper overview describes it as a streaming transcription model for live audio. citeturn1view2turn0search3
+Use `gpt-realtime-whisper` when you want streaming speech-to-text without assistant speech output. OpenAI’s transcription docs describe it as the low-latency streaming path for transcript deltas, and Microsoft’s GPT Realtime Whisper overview describes it as a streaming transcription model for live audio.
 
 #### Protocol used in this demo
 
@@ -694,7 +694,7 @@ This demo uses:
 - backend to Azure for ephemeral session creation: HTTPS
 - browser to Azure for the live session: WebRTC
 
-That fits the browser transcription pattern: a protected backend creates a short-lived client secret, then the browser uses that secret to establish the live WebRTC session. OpenAI’s transcription docs say transcription sessions can use WebSocket for server-side audio pipelines or WebRTC for browser audio. Azure’s WebRTC docs say WebRTC is the preferred client-side transport for realtime audio streaming. citeturn1view2turn1view4
+That fits the browser transcription pattern: a protected backend creates a short-lived client secret, then the browser uses that secret to establish the live WebRTC session. OpenAI’s transcription docs say transcription sessions can use WebSocket for server-side audio pipelines or WebRTC for browser audio. Azure’s WebRTC docs say WebRTC is the preferred client-side transport for realtime audio streaming.
 
 #### Azure endpoint format
 
@@ -726,7 +726,7 @@ Authorization: Bearer <client-secret>
 Content-Type: application/sdp
 ```
 
-Azure’s GA WebRTC docs call out `/openai/v1/realtime/client_secrets` and `/openai/v1/realtime/calls` for browser WebRTC sessions, and the Azure v1 API docs explain that the v1 path avoids the older `api-version` query requirement. citeturn1view4turn1view6
+Azure’s GA WebRTC docs call out `/openai/v1/realtime/client_secrets` and `/openai/v1/realtime/calls` for browser WebRTC sessions, and the Azure v1 API docs explain that the v1 path avoids the older `api-version` query requirement.
 
 #### Required runtime parameters
 
@@ -780,7 +780,7 @@ Azure’s GA WebRTC docs call out `/openai/v1/realtime/client_secrets` and `/ope
 }
 ```
 
-OpenAI’s realtime transcription docs show transcription sessions with `type: "transcription"`, `audio.input.format`, `audio.input.transcription.model`, `audio.input.transcription.language`, and optional `turn_detection`. The transcription-session reference also documents `delay` for `gpt-realtime-whisper`, where lower delay yields earlier partial text and higher delay can improve quality. citeturn1view2turn1view0
+OpenAI’s realtime transcription docs show transcription sessions with `type: "transcription"`, `audio.input.format`, `audio.input.transcription.model`, `audio.input.transcription.language`, and optional `turn_detection`. The transcription-session reference also documents `delay` for `gpt-realtime-whisper`, where lower delay yields earlier partial text and higher delay can improve quality.
 
 #### Common success events
 
